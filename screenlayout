@@ -1,0 +1,5 @@
+#!/bin/sh
+
+export LAYOUTS=~/.screenlayout/
+
+$SHELL ${LAYOUTS}$((cd ${LAYOUTS}; ls *) | zenity --list --column=Screenlayout)
