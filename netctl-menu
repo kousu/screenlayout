@@ -1,0 +1,21 @@
+#!/bin/sh
+
+# switch to root
+# this could also be done in the shebang line, and is maybe better done there
+# (except for the weirdness that shebangs don't parse quite the same in all cases)
+if [ $EUID -ne 0 ]; then
+  gksudo $0 $@
+  exit 0;
+fi
+
+# nuisances:
+# - gksudo doesn't behave like regular sudo. it doesn't
+# - putting (gk)sudo in the shebang line badly misbehaves! for some reason getting root that way breaks access to X, so 'zenity' just fucks off
+
+export NETWORKS=/etc/netctl/
+
+# sorry for the dense shell scripting!!
+NETWORK=$((cd ${NETWORKS}; find -maxdepth 1 -type f | sed s/\\.\\/// ) | zenity --list --column=Networks)
+echo Switching to "${NETWORK}"
+netctl switch-to "${NETWORK}"
+netctl status "${NETWORK}"
