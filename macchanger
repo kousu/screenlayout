@@ -1,0 +1,50 @@
+#!/bin/sh
+# A netctl hook for improving anonymity on ArchLinux by running
+# macchanger(8) before every connection
+#
+# Installation:
+# Copy this script to /etc/netctl/hooks/macchanger
+# `chmod +x /etc/netctl/hooks/macchanger`
+# For each profile;5B $PROFILE you want to enable this on, make a symlink:
+# `ln -s macchanger /etc/netctl/hooks/${PROFILE}`;
+
+# There's not much use doing this on a network you have to
+# authenticate to (and it might raise eyebrows if your account is suddenly showing 100 different devices)
+# Do not use for networks with MAC locking enabled, such as your University's wired network or your paranoid friend's WiFi.
+# And you might as well not use it at your friends' houses, since they know who you are anyway.
+# So reserve it for internet cafes and libraries.
+#
+# Troubleshooting:
+# First, see netctl.profile(5)
+# Second, email me: nick@kousu.ca
+
+# TODO: maybe a better system is to `macchanger -r` by default (e.g. in /etc/hooks/interfaces/wlp3s0), and then add specific "unmacchange" with the same install guide as above except to whitelist certain profiles
+
+#####
+##
+
+# netctl provides two hooks to let you run scripts: ExecUpPost and ExecDownPre;
+# but these run at the *opposite* side of what I want: ExecUpPre and ExecDownPost, because I want to fake my MAC address before every sending any radio
+# Luckily 
+# Unluckily, these files were never designed to do this: you're just supposed to use them to centralize config variables
+#
+# Additional problem: since these files were intended to be like ~/.profile files (ie stateless; just setting vars and getting out of the way)
+#  they are run *twice*: once for stopping a profile, once for starting it
+# Now, this information is available in ${BASH_ARGV[@]}
+#  but for some reason *not* in $@ and *not* in $1, $2, ...
+# ..ohh, because $@ was started at the top of the script bash considers these globals, whereas arguments to bash function calls are something else...
+# the upshot, anyhow, is this:
+mode=${BASH_ARGV[2]}
+
+if [ $mode = "start" ]; then
+  echo "Changing MAC address of wlp3s0"
+  macchanger -b -A wlp3s0
+elif [ $mode = "stop"]; then
+  echo "Resetting MAC address of wlp3s0"
+  macchanger -p wlp3s0
+fi
+
+# but even this is imperfect; what I *really* want is to first load the profile file
+# then run this hook, based on all the information in that file but *before* netctl tries to do anything with it
+# maybe the "proper" way to do this is a systemd service that I add to the dependency chain??
+#  maybe i should give up on arch and systemd :(
