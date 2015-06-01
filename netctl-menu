@@ -1,23 +1,50 @@
-#!/bin/sh
+#!/bin/bash
 
-# switch to root
-# this could also be done in the shebang line, and is maybe better done there
-# (except for the weirdness that shebangs don't parse quite the same in all cases)
-if [ $EUID -ne 0 ]; then
-  gksudo $0 $@
-  exit 0;
+
+
+
+# Ask user for a netctl profile to switch to
+# TODO: have a dialog(1)-based interface
+#  i really just want something which is dialog(1) on the command line and zenity when not, but has the same API both places
+if ! NETWORK=$(netctl list | cut -c 3- | sort |  zenity --list --column=Networks 2>/dev/null); then
+  exit $?
 fi
 
-# nuisances:
-# - gksudo doesn't behave like regular sudo. it doesn't
-# - putting (gk)sudo in the shebang line badly misbehaves! for some reason getting root that way breaks access to X, so 'zenity' just fucks off
 
-export NETWORKS=/etc/netctl/
+# randomize my MAC
+#  by forcing everything down and changing them all, which is super inefficient (and I dunno what this will do to lo)
+# TODO: roll this in as a netctl hook; there are some networks it's pointless (and therefore suspicious) to do this on
+IFs() {
+  ip link | egrep "^[[:digit:]]" | grep -v lo |  cut -f 2 -d ':'
+}
 
-# sorry for the dense shell scripting!!
-NETWORK=$((cd ${NETWORKS}; find -maxdepth 1 -type f -not -name "*~"  | sed s/\\.\\/// | sort ) | zenity --list --column=Networks)
-echo Switching to "${NETWORK}"
-netctl switch-to "${NETWORK}"
-netctl status "${NETWORK}"
-echo "MAC status:"
-macchanger -s
+# vectorized macchanger(1)
+macchangers() {
+  IFs | while read IF; do #first, reset the MACs
+    echo $IF
+    sudo ip link set $IF down;
+    sudo macchanger $@ $IF;
+    echo
+  done
+}
+
+
+case "$NETWORK" in
+  eduroam|sunnytruck|kousu|sasha|zilliah) #this is the list of networks *not* to anonymize on
+    macchangers -p ;;
+  *)
+    macchangers -r ;;
+esac
+
+echo Switching to ${NETWORK}
+sudo netctl switch-to "${NETWORK}"
+if netctl status \"${NETWORK}\" 2&>1 >/dev/null; then
+  while ! ping -c 1 uwaterloo.ca; do sleep 0.25; done;
+  sleep 3; #give user time to read result
+else
+  echo Unable to bring up \"${NETWORK}\"; echo;
+  netctl status \"${NETWORK}\";
+  # start a debugging shell
+  $(SHELL)
+fi
+
